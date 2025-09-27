@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📖</text></svg>">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gerador de Ebook a Partir de Vídeo</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/react-quill@2.0.0/dist/quill.snow.css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://aistudiocdn.com/react-dom@^18.2.0/",
+    "react/": "https://aistudiocdn.com/react@^18.2.0/",
+    "react": "https://aistudiocdn.com/react@^18.2.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.20.0",
+    "marked": "https://esm.sh/marked@12.0.2",
+    "react-quill": "https://esm.sh/react-quill@2.0.0"
+  }
+}
+</script>
+<style>
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-fade-in {
+    animation: fade-in 0.5s ease-out forwards;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    background-color: #f8fafc; /* bg-slate-50 */
+  }
+  /* Custom styles for React Quill */
+  .quill-title-editor .ql-toolbar {
+    border: none !important;
+    padding: 0 0 8px 0 !important;
+  }
+  .quill-title-editor .ql-container {
+    border: none !important;
+  }
+  .quill-title-editor .ql-editor {
+    font-family: inherit !important;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+    letter-spacing: inherit !important;
+    line-height: inherit !important;
+    padding: 0 !important;
+  }
+  .ql-editor {
+    min-height: 150px;
+    font-size: 1rem;
+    line-height: 1.7;
+  }
+  .ql-container.ql-snow {
+      border-radius: 0 0 0.5rem 0.5rem;
+      border-color: #e2e8f0;
+  }
+   .ql-toolbar.ql-snow {
+      border-radius: 0.5rem 0.5rem 0 0;
+      border-color: #e2e8f0;
+      border-bottom: 0px;
+   }
+</style>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
