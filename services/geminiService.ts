@@ -2,8 +2,9 @@ import { GoogleGenAI, Part, Type } from "@google/genai";
 import type { GeneratedEbook, Chapter, EbookImage } from '../types';
 
 export const getGeminiApiKey = (): string | null => {
-  // A chave da API foi fixada no código para facilitar testes pessoais, conforme solicitado.
-  return "AIzaSyBVsXGUiNe4SP4DOERNm0chrg8JvwlQRZ4";
+  // A chave da API deve ser fornecida através da variável de ambiente API_KEY.
+  // O componente ApiKeySetup em App.tsx orienta o usuário sobre como configurá-la.
+  return process.env.API_KEY || null;
 };
 
 const dataURLtoBase64 = (dataurl: string): string => {

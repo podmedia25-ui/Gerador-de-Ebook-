@@ -1,5 +1,7 @@
-
 import React from 'react';
+import { User } from 'firebase/auth';
+import { auth } from '../firebase';
+import { signOut } from 'firebase/auth';
 
 const BookIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -10,9 +12,10 @@ const BookIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
 
 interface HeaderProps {
     onGoToHome: () => void;
+    user: User | null;
 }
 
-const Header: React.FC<HeaderProps> = ({ onGoToHome }) => {
+const Header: React.FC<HeaderProps> = ({ onGoToHome, user }) => {
   return (
     <header className="bg-white/75 backdrop-blur-lg border-b border-slate-200 sticky top-0 z-20">
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -27,6 +30,19 @@ const Header: React.FC<HeaderProps> = ({ onGoToHome }) => {
                     Gerador de Ebook a Partir de Vídeo
                 </h1>
             </button>
+            {user && (
+                <div className="flex items-center space-x-4">
+                    <span className="text-sm text-slate-600 hidden sm:block" title={user.email || ''}>
+                        {user.email}
+                    </span>
+                    <button
+                        onClick={() => signOut(auth)}
+                        className="bg-white hover:bg-slate-100 text-slate-700 font-semibold py-1.5 px-3 rounded-md transition-colors border border-slate-300 shadow-sm text-sm"
+                    >
+                        Sair
+                    </button>
+                </div>
+            )}
         </div>
       </div>
     </header>

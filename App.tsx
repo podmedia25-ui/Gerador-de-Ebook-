@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import type { Ebook } from './types';
+import type { Ebook, GeneratedEbook } from './types';
 import { getGeminiApiKey, generateEbookFromVideo, transcribeVideo, generateEbookFromTranscriptAndFrames } from './services/geminiService';
 import { extractFrames } from './utils/videoUtils';
 import Header from './components/Header';
@@ -12,10 +12,11 @@ import EbookEditor from './components/EbookEditor';
 import ErrorDisplay from './components/ErrorDisplay';
 import ProfileScreen from './components/ProfileScreen';
 import MediaTextUploader from './components/MultiAudioUploader';
+import AuthScreen from './components/AuthScreen';
+import { useAuth } from './hooks/useAuth';
 
 type AppMode = 'simple' | 'advanced' | 'media-text';
-type AppState = 'loading_key' | 'missing_key' | 'history' | 'uploading' | 'selecting' | 'generating' | 'viewing' | 'editing' | 'error';
-const LOCAL_STORAGE_KEY = 'ebook-generator-history';
+type AppState = 'loading_key' | 'missing_key' | 'authenticating' | 'history' | 'uploading' | 'selecting' | 'generating' | 'viewing' | 'editing' | 'error';
 
 
 const AlertTriangleIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
@@ -60,6 +61,7 @@ const ApiKeySetup: React.FC = () => {
 
 
 const App: React.FC = () => {
+  const { user, isAuthLoading } = useAuth();
   const [appState, setAppState] = useState<AppState>('loading_key');
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [appMode, setAppMode] = useState<AppMode>('simple');
@@ -76,6 +78,8 @@ const App: React.FC = () => {
   const [outputLanguage, setOutputLanguage] = useState<string>('pt-BR');
 
   const generationCancelled = useRef(false);
+
+  const LOCAL_STORAGE_KEY = user ? `ebook-generator-history-${user.uid}` : null;
   
   const updateLoader = (message: string, progressValue?: number) => {
     setLoadingMessage(message);
@@ -86,35 +90,47 @@ const App: React.FC = () => {
   
   useEffect(() => {
     const key = getGeminiApiKey();
-    if (key) {
-        setApiKey(key);
+    if (!key) {
+        setAppState('missing_key');
+        return;
+    }
+    setApiKey(key);
+
+    if (isAuthLoading) {
+        setAppState('authenticating');
+    } else if (user) {
         setAppState('history');
     } else {
-        setAppState('missing_key');
+        // Not logged in, show auth screen and clear user data
+        setAppState('authenticating');
+        setSavedEbooks([]);
+        setCurrentEbook(null);
     }
-  }, []);
+  }, [isAuthLoading, user]);
 
 
   useEffect(() => {
+    if (!LOCAL_STORAGE_KEY) return;
     try {
-      // FIX: Explicitly use window.localStorage to avoid type errors with missing DOM library.
-      // @google/genai-fix: Cast `window` to `any` to access DOM properties without DOM lib types.
       const storedEbooks = (window as any).localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (storedEbooks) setSavedEbooks(JSON.parse(storedEbooks));
+      if (storedEbooks) {
+          setSavedEbooks(JSON.parse(storedEbooks));
+      } else {
+          setSavedEbooks([]); 
+      }
     } catch (e) {
       console.error("Falha ao carregar ebooks do localStorage", e);
     }
-  }, []);
+  }, [LOCAL_STORAGE_KEY]);
 
   useEffect(() => {
+    if (!LOCAL_STORAGE_KEY) return;
     try {
-      // FIX: Explicitly use window.localStorage to avoid type errors with missing DOM library.
-      // @google/genai-fix: Cast `window` to `any` to access DOM properties without DOM lib types.
       (window as any).localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(savedEbooks));
     } catch (e) {
       console.error("Falha ao salvar ebooks no localStorage", e);
     }
-  }, [savedEbooks]);
+  }, [savedEbooks, LOCAL_STORAGE_KEY]);
 
   const resetState = () => {
     setCurrentEbook(null);
@@ -144,7 +160,6 @@ const App: React.FC = () => {
     setAppState('uploading');
   };
 
-  // FIX: Moved handleEbookGeneration before handleFilesUpload to resolve a "used before its declaration" error.
   const handleEbookGeneration = useCallback(async (selectedFrames: string[], fileForTranscriptionOverride: File | null = null) => {
     if (!apiKey) {
       setError("Chave da API não encontrada.");
@@ -163,7 +178,7 @@ const App: React.FC = () => {
     setError(null);
 
     try {
-      let generatedContent;
+      let generatedContent: GeneratedEbook;
       if (appMode === 'simple') {
         if (!videoFile) throw new Error("Arquivo de vídeo não encontrado para o modo simples.");
         updateLoader("Iniciando a geração do ebook (Modo Rápido)...");
@@ -257,7 +272,6 @@ const App: React.FC = () => {
     if (files.texts.length === 0 && files.pastedText.trim() === '') {
         setError("É necessário fornecer ao menos um arquivo de texto ou colar um texto para o conteúdo.");
         setAppState('error');
-        // Adicionado para garantir que o estado não fique em "gerando"
         setTimeout(handleGoToHistory, 0); 
         return;
     }
@@ -337,7 +351,6 @@ const App: React.FC = () => {
   };
 
   const handleDeleteEbook = (id: string) => {
-    // @google/genai-fix: Cast `window` to `any` to access DOM properties without DOM lib types.
     if ((window as any).confirm("Tem certeza que deseja excluir este ebook? Esta ação não pode ser desfeita.")) {
       setSavedEbooks(prev => prev.filter(ebook => ebook.id !== id));
     }
@@ -349,6 +362,9 @@ const App: React.FC = () => {
         return <Loader message="Verificando configuração..." />;
       case 'missing_key':
         return <ApiKeySetup />;
+      case 'authenticating':
+        if (isAuthLoading) return <Loader message="Autenticando..." />;
+        return <AuthScreen />;
       case 'history':
         return <ProfileScreen ebooks={savedEbooks} onView={handleViewEbook} onDelete={handleDeleteEbook} onCreateNew={handleCreateNew} />;
       case 'uploading':
@@ -373,7 +389,7 @@ const App: React.FC = () => {
 
   return (
     <div className="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans">
-      <Header onGoToHome={handleGoToHistory} />
+      <Header onGoToHome={handleGoToHistory} user={user} />
       <main className="flex-grow w-full flex flex-col items-center p-4 sm:p-6 lg:p-8">
         {renderContent()}
       </main>

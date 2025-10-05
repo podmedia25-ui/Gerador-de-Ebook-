@@ -1,7 +1,19 @@
-// O hook de autenticação foi desativado pois a funcionalidade do Firebase foi removida.
+import { useState, useEffect } from 'react';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth } from '../firebase';
+
 export const useAuth = () => {
-  const user: null = null;
-  const isAuthLoading = false;
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      setIsAuthLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   return { user, isAuthLoading };
 };
