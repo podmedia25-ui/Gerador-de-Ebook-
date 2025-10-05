@@ -1,12 +1,9 @@
 import { GoogleGenAI, Part, Type } from "@google/genai";
 import type { GeneratedEbook, Chapter, EbookImage } from '../types';
 
-const getGeminiApiKey = (): string => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    throw new Error("API key for Gemini is not configured. Please set the API_KEY environment variable.");
-  }
-  return apiKey;
+export const getGeminiApiKey = (): string | null => {
+  // A chave da API foi fixada no código para facilitar testes pessoais, conforme solicitado.
+  return "AIzaSyBVsXGUiNe4SP4DOERNm0chrg8JvwlQRZ4";
 };
 
 const dataURLtoBase64 = (dataurl: string): string => {
@@ -29,11 +26,12 @@ const fileToPart = async (file: File): Promise<Part> => {
 }
 
 export const transcribeVideo = async (
+    apiKey: string,
     mediaFile: File,
     onProgress: (message: string, progress?: number) => void
 ): Promise<string> => {
     onProgress("Iniciando transcrição...");
-    const ai = new GoogleGenAI({ apiKey: getGeminiApiKey() });
+    const ai = new GoogleGenAI({ apiKey });
     try {
         const mediaPart = await fileToPart(mediaFile);
         const prompt = `
@@ -117,12 +115,13 @@ const generateChapterContent = async (ai: GoogleGenAI, title: string, transcript
 };
 
 export const generateEbookFromTranscriptAndFrames = async (
+    apiKey: string,
     transcription: string,
     frames: string[],
     onProgress: (message: string, progress?: number) => void,
     language: string,
 ): Promise<GeneratedEbook> => {
-    const ai = new GoogleGenAI({ apiKey: getGeminiApiKey() });
+    const ai = new GoogleGenAI({ apiKey });
     try {
         onProgress("Definindo os capítulos...", 5);
         const chapterTitles = await generateChapterTitles(ai, transcription, language);
@@ -182,139 +181,216 @@ export const generateEbookFromTranscriptAndFrames = async (
         
         onProgress("Finalizando...", 100);
         return {
-            ...ebookContent,
+            title: ebookScaffold.title,
+            introduction: ebookScaffold.introduction,
             chapters: fullChapters,
         };
 
     } catch (error) {
-        console.error("Erro ao gerar ebook (Modo Detalhado):", error);
-        throw new Error("Falha ao gerar o ebook a partir da transcrição. Verifique o console para mais detalhes.");
+        console.error("Erro ao gerar o ebook:", error);
+        throw new Error("Falha ao gerar o conteúdo do ebook. A IA pode ter retornado um formato inesperado.");
     }
-}
+};
 
-export const generateEbookFromVideo = async (
-  videoFile: File,
-  frames: string[],
-  onProgress: (message: string, progress?: number) => void,
-  language: string,
-): Promise<GeneratedEbook> => {
-  const ai = new GoogleGenAI({ apiKey: getGeminiApiKey() });
 
-  try {
-    onProgress("Processando o vídeo para análise...");
-    const videoPart = await fileToPart(videoFile);
+const placeImagesInEbook = async (
+    ai: GoogleGenAI,
+    ebookContent: Omit<GeneratedEbook, "chapters"> & { chapters: Omit<Chapter, "images">[] },
+    frames: string[],
+    frameParts: Part[],
+    onProgress: (message: string) => void,
+    language: string,
+): Promise<Chapter[]> => {
+    if (frames.length === 0) {
+        onProgress("Finalizando (sem imagens)...");
+        return ebookContent.chapters.map(c => ({ ...c, images: [] }));
+    }
 
-    onProgress("Gerando a estrutura do ebook a partir do vídeo...");
-    const contentGenerationPrompt = `
-        Analise este vídeo de uma aula e gere o conteúdo para um ebook no idioma ${language}.
-        Sua resposta DEVE ser um objeto JSON válido.
-        O conteúdo dos capítulos deve ser em formato Markdown, bem estruturado e fiel ao vídeo.
-        O formato do JSON deve ser o definido no schema.
+    onProgress("Analisando o melhor local para as imagens...");
+
+    const prompt = `
+      Você receberá o conteúdo de um ebook (título, introdução, capítulos) e uma série de imagens (frames de um vídeo).
+      Sua tarefa é determinar a melhor localização para cada imagem dentro dos capítulos.
+      Para cada capítulo, decida quais imagens são mais relevantes.
+      Retorne um objeto JSON com uma chave "chapters". O valor deve ser um array, onde cada elemento representa um capítulo e contém:
+      1. "title": O título original do capítulo (string).
+      2. "images": Um array de objetos, onde cada objeto tem:
+         - "imageIndex": O índice da imagem no array de frames original (number).
+         - "caption": Uma legenda curta e descritiva para a imagem, no idioma ${language} (string).
+
+      EBOOK COMPLETO:
+      ${JSON.stringify(ebookContent)}
     `;
 
     const schema = {
         type: Type.OBJECT,
         properties: {
-            title: { type: Type.STRING, description: "Um título conciso e informativo para o ebook" },
-            introduction: { type: Type.STRING, description: "Um parágrafo de introdução que resume o conteúdo do vídeo." },
             chapters: {
                 type: Type.ARRAY,
-                description: "Uma lista de capítulos baseada nos tópicos do vídeo.",
+                description: "Array de capítulos com as imagens e legendas associadas.",
                 items: {
                     type: Type.OBJECT,
                     properties: {
-                        title: { type: Type.STRING, description: "O título do capítulo." },
-                        content: { type: Type.STRING, description: "Conteúdo detalhado do capítulo em formato Markdown." },
+                        title: { type: Type.STRING },
+                        images: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    imageIndex: { type: Type.INTEGER, description: "Índice da imagem no array original." },
+                                    caption: { type: Type.STRING, description: "Legenda para a imagem." }
+                                },
+                                required: ["imageIndex", "caption"]
+                            }
+                        }
                     },
-                    required: ["title", "content"],
+                    required: ["title", "images"]
                 }
             }
         },
-        required: ["title", "introduction", "chapters"],
+        required: ["chapters"]
     };
 
-    const contentResult = await ai.models.generateContent({
+    const result = await ai.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: [{ parts: [ { text: contentGenerationPrompt }, videoPart] }],
+        contents: [
+            { parts: [{ text: prompt }, ...frameParts] }
+        ],
         config: { responseMimeType: "application/json", responseSchema: schema }
     });
+    
+    onProgress("Finalizando a alocação de imagens...");
 
-    const ebookContent = JSON.parse(contentResult.text) as Omit<GeneratedEbook, "chapters"> & { chapters: Omit<Chapter, "images">[] };
+    const imagePlacement = JSON.parse(result.text) as { chapters: { title: string, images: { imageIndex: number; caption: string }[] }[] };
 
-    const frameParts: Part[] = frames.map(frameDataUrl => ({
-        inlineData: { mimeType: "image/jpeg", data: dataURLtoBase64(frameDataUrl) }
-    }));
-    const fullChapters = await placeImagesInEbook(ai, ebookContent, frames, frameParts, onProgress, language);
+    return ebookContent.chapters.map(originalChapter => {
+        const placementInfo = imagePlacement.chapters.find(p => p.title === originalChapter.title);
+        const images: EbookImage[] = placementInfo?.images
+            ?.filter(img => img.imageIndex >= 0 && img.imageIndex < frames.length)
+            .map(img => ({
+                url: frames[img.imageIndex],
+                caption: img.caption
+            })) || [];
 
-    return { ...ebookContent, chapters: fullChapters };
-
-  } catch (error: any) {
-    console.error("Erro ao gerar ebook:", error);
-    throw new Error("Falha ao gerar o ebook. Verifique o console para mais detalhes e certifique-se que sua API Key está configurada.");
-  }
+        return {
+            ...originalChapter,
+            images,
+        };
+    });
 };
 
-async function placeImagesInEbook(
-    ai: GoogleGenAI,
-    ebookContent: Omit<GeneratedEbook, "chapters"> & { chapters: Omit<Chapter, "images">[] },
-    frames: string[],
-    frameParts: Part[],
-    onProgress: (message: string, progress?: number) => void,
-    language: string,
-): Promise<Chapter[]> {
-    let finalChapters: Chapter[] = ebookContent.chapters.map((c) => ({...c, images: []}));
 
-    if (frames.length > 0) {
-        onProgress("Analisando e posicionando imagens nos capítulos...");
-        
-        const imagePlacementPrompt = `
-            Você receberá o conteúdo de um ebook em JSON e uma série de imagens.
-            Sua tarefa é analisar cada imagem, criar uma legenda descritiva no idioma ${language} e determinar em qual capítulo ela se encaixa melhor.
-            Apenas posicione imagens que sejam realmente relevantes para o conteúdo do capítulo.
-            Retorne um objeto JSON com a estrutura definida no schema.
+export const generateEbookFromVideo = async (
+  apiKey: string,
+  videoFile: File,
+  selectedFrames: string[],
+  onProgress: (message: string) => void,
+  language: string,
+): Promise<GeneratedEbook> => {
+    onProgress("Iniciando a análise do vídeo...");
+    const ai = new GoogleGenAI({ apiKey });
+
+    // FIX: Define an explicit type for the AI's JSON response to correctly type `imageIndex`.
+    type EbookFromVideoResponse = {
+        title: string;
+        introduction: string;
+        chapters: {
+            title: string;
+            content: string;
+            images: { imageIndex: number; caption: string; }[];
+        }[];
+    };
+
+    try {
+        const videoPart = await fileToPart(videoFile);
+        const frameParts: Part[] = selectedFrames.map(frame => ({
+            inlineData: { mimeType: 'image/jpeg', data: dataURLtoBase64(frame) }
+        }));
+
+        const prompt = `
+            Analise este vídeo e as imagens de frames fornecidas.
+            Sua tarefa é criar um ebook bem estruturado baseado no conteúdo falado no vídeo.
+            O ebook deve ser escrito no idioma: ${language}.
+            
+            Sua resposta DEVE ser um objeto JSON válido, seguindo estritamente a estrutura abaixo:
+            {
+              "title": "Um título conciso e informativo para o ebook",
+              "introduction": "Um parágrafo de introdução que resume o conteúdo.",
+              "chapters": [
+                {
+                  "title": "Título do Capítulo 1",
+                  "content": "O conteúdo do capítulo em formato Markdown. O conteúdo deve ser uma transcrição e elaboração do que foi dito no vídeo, fiel ao conteúdo original.",
+                  "images": [
+                    {
+                      "imageIndex": <índice da imagem no array de frames (ex: 0, 1, 2)>,
+                      "caption": "Uma legenda curta e descritiva para a imagem."
+                    }
+                  ]
+                }
+              ]
+            }
         `;
-
-        const imagePlacementSchema = {
+        
+        const schema = {
             type: Type.OBJECT,
             properties: {
-                placements: {
+                title: { type: Type.STRING },
+                introduction: { type: Type.STRING },
+                chapters: {
                     type: Type.ARRAY,
-                    description: "Lista de posicionamentos de imagem.",
                     items: {
                         type: Type.OBJECT,
                         properties: {
-                            chapterIndex: { type: Type.NUMBER, description: "O índice do capítulo (baseado em zero) onde a imagem deve ser colocada." },
-                            imageIndex: { type: Type.NUMBER, description: "O índice da imagem (baseado em zero) a ser colocada." },
-                            caption: { type: Type.STRING, description: "Uma legenda descritiva e concisa para a imagem." },
+                            title: { type: Type.STRING },
+                            content: { type: Type.STRING },
+                            images: {
+                                type: Type.ARRAY,
+                                items: {
+                                    type: Type.OBJECT,
+                                    properties: {
+                                        imageIndex: { type: Type.INTEGER },
+                                        caption: { type: Type.STRING }
+                                    },
+                                    required: ["imageIndex", "caption"]
+                                }
+                            }
                         },
-                        required: ["chapterIndex", "imageIndex", "caption"],
+                        required: ["title", "content", "images"]
                     }
                 }
             },
-            required: ["placements"],
+            required: ["title", "introduction", "chapters"]
+        };
+        
+        onProgress("Gerando conteúdo do ebook com a IA...");
+        const result = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: [{ parts: [{ text: prompt }, videoPart, ...frameParts] }],
+            config: { responseMimeType: "application/json", responseSchema: schema }
+        });
+
+        onProgress("Finalizando e formatando o ebook...");
+        const parsedResult = JSON.parse(result.text) as EbookFromVideoResponse;
+
+        // Mapeia os índices das imagens para as URLs reais dos frames
+        const chaptersWithImageUrls = parsedResult.chapters.map(chapter => ({
+            ...chapter,
+            images: chapter.images
+                .filter(img => img.imageIndex >= 0 && img.imageIndex < selectedFrames.length)
+                .map(img => ({
+                    // FIX: Construct the EbookImage object correctly by omitting `imageIndex`, which is not part of the final type.
+                    caption: img.caption,
+                    url: selectedFrames[img.imageIndex]
+                }))
+        }));
+
+        return {
+            ...parsedResult,
+            chapters: chaptersWithImageUrls,
         };
 
-        const imagePlacementResult = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: [{ parts: [{text: imagePlacementPrompt }, { text: JSON.stringify(ebookContent) }, ...frameParts] }],
-            config: { responseMimeType: "application/json", responseSchema: imagePlacementSchema }
-        });
-        const imagePlacementData = JSON.parse(imagePlacementResult.text) as { placements: { chapterIndex: number, imageIndex: number, caption: string }[] };
-
-        if (imagePlacementData.placements) {
-            for (const placement of imagePlacementData.placements) {
-              const chapterIndex = placement.chapterIndex;
-              const imageIndex = placement.imageIndex;
-              if (finalChapters[chapterIndex] && frames[imageIndex]) {
-                finalChapters[chapterIndex].images.push({
-                  url: frames[imageIndex],
-                  caption: placement.caption,
-                });
-              }
-            }
-        }
+    } catch (error) {
+        console.error("Erro ao gerar o ebook a partir do vídeo:", error);
+        throw new Error("Falha ao gerar o ebook. A IA pode não ter conseguido processar o vídeo.");
     }
-
-    onProgress("Finalizando...", 100);
-    return finalChapters;
-}
+};

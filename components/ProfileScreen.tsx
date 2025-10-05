@@ -6,7 +6,7 @@ interface ProfileScreenProps {
   ebooks: Ebook[];
   onView: (id: string) => void;
   onDelete: (id: string) => void;
-  onCreateNew: (mode: 'simple' | 'advanced') => void;
+  onCreateNew: (mode: 'simple' | 'advanced' | 'media-text') => void;
 }
 
 const PlusIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
@@ -37,7 +37,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ ebooks, onView, onDelete,
           <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">Seu Histórico</h1>
           <p className="mt-1 text-lg text-slate-600">Seu histórico de ebooks gerados fica salvo no seu navegador.</p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex flex-col sm:flex-row gap-3 items-stretch">
              <button
               onClick={() => onCreateNew('simple')}
               className="inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-5 rounded-lg transition-all transform hover:scale-105 shadow-md focus:outline-none focus:ring-4 focus:ring-blue-300 flex-shrink-0"
@@ -51,6 +51,13 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ ebooks, onView, onDelete,
             >
               <PlusIcon className="mr-2" />
               Criar (Detalhado)
+            </button>
+             <button
+              onClick={() => onCreateNew('media-text')}
+              className="inline-flex items-center justify-center bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-5 rounded-lg transition-all transform hover:scale-105 shadow-md focus:outline-none focus:ring-4 focus:ring-purple-300 flex-shrink-0"
+            >
+              <PlusIcon className="mr-2" />
+              Criar (Mídia + Texto)
             </button>
         </div>
       </div>

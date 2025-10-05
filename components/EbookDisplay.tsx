@@ -28,6 +28,13 @@ const EditIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     </svg>
 );
 
+const ExternalLinkIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor" {...props}>
+        <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+        <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+    </svg>
+);
+
 
 const ReadOnlyField: React.FC<{ html: string; className?: string, as?: 'div' | 'h1' | 'h2' | 'h3' }> = 
 ({ html, className, as: Component = 'div' }) => {
@@ -110,6 +117,21 @@ ${chaptersMarkdown}
     URL.revokeObjectURL(url);
   };
 
+  const handleOpenInNewTab = () => {
+    const htmlContent = getFullHtmlContent();
+    // @google/genai-fix: Cast `window` to `any` to access DOM properties without DOM lib types.
+    const newTab = (window as any).open();
+    if (newTab) {
+        newTab.document.open();
+        newTab.document.write(htmlContent);
+        newTab.document.close();
+        newTab.focus();
+    } else {
+        // @google/genai-fix: Cast `window` to `any` to access DOM properties without DOM lib types.
+        (window as any).alert("Por favor, permita pop-ups para abrir o ebook em uma nova guia.");
+    }
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 w-full max-w-7xl animate-fade-in overflow-hidden">
         <header className="p-8 text-center border-b border-slate-200">
@@ -171,6 +193,7 @@ ${chaptersMarkdown}
                  <button onClick={onEdit} className="inline-flex items-center justify-center bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-5 rounded-lg transition-colors shadow-sm"><EditIcon />Editar Ebook</button>
             )}
             <button onClick={handleExportToDoc} className="inline-flex items-center justify-center bg-white hover:bg-slate-100 text-slate-700 font-semibold py-2 px-5 rounded-lg transition-colors border border-slate-300 shadow-sm"><DocumentDownloadIcon />Exportar para Doc</button>
+            <button onClick={handleOpenInNewTab} className="inline-flex items-center justify-center bg-white hover:bg-slate-100 text-slate-700 font-semibold py-2 px-5 rounded-lg transition-colors border border-slate-300 shadow-sm"><ExternalLinkIcon />Abrir em nova guia</button>
             <button onClick={handleCopyToClipboard} className="inline-flex items-center justify-center bg-white hover:bg-slate-100 text-slate-700 font-semibold py-2 px-5 rounded-lg transition-colors border border-slate-300 shadow-sm"><CopyIcon />{copyButtonText}</button>
             <button onClick={onBack} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-5 rounded-lg transition-all transform hover:scale-105 shadow-md">Voltar ao Histórico</button>
         </footer>
